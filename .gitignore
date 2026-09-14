@@ -1,0 +1,19 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+# Runtime output: free questions collected by this machine, not source.
+data/
+
+# Local tooling and scratch, not source.
+tmp/
+.superpowers/
+.workbuddy/
+# Promo video: dependencies and rendered output are regenerable.
+promo-video/node_modules/
+promo-video/out/
+# Third-party materials not redistributed in this public repository.
+official-skill/
+zhihu-cli-skill-*.zip
+知乎黑客松*.pdf

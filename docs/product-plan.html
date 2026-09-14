@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知辨 · 产品说明计划书</title>
+<style>
+  :root {
+    --brand: #1772F6;
+    --brand-soft: #EAF2FE;
+    --ink: #1A1A1E;
+    --text-2: #55565E;
+    --text-3: #8B8C94;
+    --coral: #E85D4A;
+    --line: #E8E8EC;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: var(--ink); background: #F7F7F9; line-height: 1.75;
+  }
+  .page { max-width: 880px; margin: 0 auto; background: #fff; }
+  section { padding: 44px 64px; border-bottom: 1px solid var(--line); }
+  @media print {
+    body { background: #fff; }
+    section { page-break-inside: avoid; padding: 28px 40px; }
+  }
+  /* 封面 */
+  .cover { text-align: center; padding: 72px 64px 52px; background: linear-gradient(180deg, #F4F8FF 0%, #fff 100%); }
+  .cover .logo { font-size: 15px; letter-spacing: 6px; color: var(--brand); font-weight: 700; margin-bottom: 18px; }
+  .cover h1 { font-size: 42px; letter-spacing: 2px; margin-bottom: 10px; }
+  .cover .sub { font-size: 18px; color: var(--text-2); margin-bottom: 6px; }
+  .cover .slogan { font-size: 15px; color: var(--text-3); margin-bottom: 30px; }
+  .cover img { width: 72%; border-radius: 16px; box-shadow: 0 18px 44px rgba(23,114,246,.14); }
+  .cover .meta { margin-top: 30px; font-size: 13px; color: var(--text-3); }
+  .cover .meta span { margin: 0 10px; }
+  /* 标题 */
+  h2 { font-size: 24px; margin-bottom: 6px; padding-left: 14px; border-left: 4px solid var(--brand); }
+  h2 .en { font-size: 12px; color: var(--text-3); font-weight: 400; margin-left: 10px; letter-spacing: 1px; }
+  h3 { font-size: 17px; margin: 26px 0 10px; color: var(--ink); }
+  p { margin: 10px 0; color: var(--text-2); font-size: 15px; }
+  p b, li b { color: var(--ink); }
+  ul, ol { margin: 10px 0 10px 22px; color: var(--text-2); font-size: 15px; }
+  li { margin: 6px 0; }
+  .lead { font-size: 16.5px; color: var(--ink); }
+  .tagline { display: inline-block; background: var(--brand-soft); color: var(--brand); font-weight: 600; padding: 6px 16px; border-radius: 999px; margin: 4px 0 10px; }
+  /* 截图 */
+  figure { margin: 20px 0 26px; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.06); }
+  figcaption { text-align: center; font-size: 13px; color: var(--text-3); margin-top: 10px; }
+  .shots-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .shots-2 figure { margin: 0; }
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th { background: var(--brand-soft); color: var(--ink); text-align: left; padding: 9px 12px; font-weight: 600; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  /* 卡片与引用 */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px; }
+  .card .no { font-size: 13px; font-weight: 700; color: var(--brand); }
+  .card h4 { font-size: 15.5px; margin: 6px 0; }
+  .card p { font-size: 13.5px; margin: 4px 0 0; }
+  .quote { border-left: 4px solid var(--brand); background: #FAFBFD; padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 14px 0; font-size: 15px; color: var(--ink); }
+  .callout { background: #FFF6F4; border: 1px solid #F6D5CE; border-radius: 12px; padding: 16px 20px; margin: 16px 0; font-size: 14.5px; color: #8A3A2E; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 16px 0; }
+  .flow .step { background: var(--brand-soft); color: var(--brand); border-radius: 8px; padding: 7px 13px; font-size: 13.5px; font-weight: 600; }
+  .flow .step.guard { background: #FFF1EC; color: var(--coral); }
+  .flow .arrow { color: var(--text-3); font-size: 14px; }
+  .footer { text-align: center; padding: 30px; font-size: 13px; color: var(--text-3); }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+  .kpi { text-align: center; border: 1px solid var(--line); border-radius: 12px; padding: 16px 8px; }
+  .kpi b { display: block; font-size: 24px; color: var(--brand); }
+  .kpi span { font-size: 12.5px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 封面 -->
+  <section class="cover">
+    <div class="logo">ZHIHU HACKATHON 2026 · 校园新锐季 · 知识炼金场赛道</div>
+    <h1>知 辨</h1>
+    <div class="sub">让分歧被看见 · 让每一句都有出处</div>
+    <div class="slogan">把知乎上真实存在分歧的回答，摆到同一张桌子上</div>
+    <img src="assets/cover.png" alt="知辨封面插画">
+    <div class="meta">
+      <span>Web 应用（桌面 + 手机浏览器）</span>|<span>同源架构 · 无第三方运行依赖</span>|<span>2026 年 9 月</span>
+    </div>
+  </section>
+
+  <!-- 问题 -->
+  <section>
+    <h2>一、我们要解决什么问题<span class="en">THE PROBLEM</span></h2>
+    <p class="lead">一个真正有争议的问题，在知乎上往往有几百条回答、吵了几百楼。但大多数用户的时间线里，只会看到算法推给他的那一种声音。</p>
+    <p>用户想认真了解「该不该裸辞」「AI 该不该进课堂」这类问题时，面临三个真实困境：</p>
+    <ul>
+      <li><b>只听得见一边</b> —— 高赞回答挤占了注意力，立场相反的低赞优质回答几乎没有曝光机会；</li>
+      <li><b>AI 摘要工具在「编」</b> —— 通用 AI 总结不区分事实与观点，常常把不存在的内容合成进去，且无法溯源；</li>
+      <li><b>跨回答对比成本极高</b> —— 要自己开十几个标签页、逐条阅读、在脑子里拼出正反两面；</li>
+      <li><b>听道理这件事太枯燥</b> —— 现有的知识工具把严肃话题做成干巴巴的清单和摘要，正确，但没人想看第二眼。</li>
+    </ul>
+    <div class="tagline">知辨的选择：不生成内容，只编排已有的真实回答——并且把它做成一场好看的比赛。</div>
+    <p>前三个是「准确」的问题，第四个是「愿意看」的问题，而后者往往被工具类产品忽略。可是「看两个人辩论」从来不需要坚持：<b>《奇葩说》能让人熬夜追更，公开课却总在收藏夹吃灰</b>。辩论是最古老的知识形式，也是最好看的那种——立场对撞有张力，攻防反转有悬念，金句交锋有爽感。</p>
+    <p>知辨把这一点做成产品的骨架：<b>知识获取不该是苦役，它可以是娱乐</b>。你为了「好看」点进来，走的时候顺便把两边的道理都听完了——而保证这场比赛好看的，正是戏剧性张力本身：极端情境下的对峙，与留给第三方的启发（见第二节）。</p>
+    <p>知辨围绕一个问题，把<b>立场相反的真实回答</b>摆到同一张辩论桌上：一边一句核对过的原句，逐字可溯源；AI 只在用户主动点击时介入，并且永远与作者原文严格分区。</p>
+  </section>
+
+  <!-- 创作思路 -->
+  <section>
+    <h2>二、核心创作思路<span class="en">CORE CONCEPT</span></h2>
+    <p>三条支柱，同时也是产品三条不可退让的底线：</p>
+    <div class="cards">
+      <div class="card">
+        <div class="no">底线 01</div>
+        <h4>绝不用虚构内容补位</h4>
+        <p>找不到立场对立的真实回答，就退回「观点阅读」模式，并如实告诉用户为什么。宁可少一个回合，绝不合成一个回合。</p>
+      </div>
+      <div class="card">
+        <div class="no">底线 02</div>
+        <h4>AI 内容与作者原文严格分区</h4>
+        <p>AI 摘要、AI 编排、AI 模拟反驳都有醒目标注；引句永远标着「原回答原句 · 已逐字校验」。用户任何时刻都能分辨哪句是人说的、哪句是 AI 说的。</p>
+      </div>
+      <div class="card">
+        <div class="no">底线 03</div>
+        <h4>编排而不裁决</h4>
+        <p>知辨不告诉你谁对谁错，不显示胜负票数。它只保证一件事：你听到的每一句都是知乎原话，都能点回原文。</p>
+      </div>
+    </div>
+
+    <h3>戏剧性的张力：极端情境，与第三方的启发</h3>
+    <p>辩论这种形式自带戏剧张力——<b>它把两拨人放进同一个极端情境里讨论</b>：每个立场被推到聚光灯下，正面的道理与反面的道理短兵相接，任何含糊都无处可藏。</p>
+    <p>而知辨做的，是把这个张力<b>从虚构拉回真实</b>：舞台上对峙的两位，是真实存在、立场真的相反的知乎答主。极端情境是我们搭的舞台装置——作者本人并不知道、也没有参与，但说出的每一个字都是他们自己的原话。张力不靠编造，靠的是真实分歧本身。</p>
+    <div class="quote">张力之外还有一层价值：<b>启发属于第三方</b>。看两人对峙的观众——也就是正在阅读的你——才是这场辩论真正的受益者。你不需要站队，你只需要在两边的道理互相顶撞的那一下，想清楚自己的答案。</div>
+
+    <h3>一场辩论的诞生</h3>
+    <p>以辩题「恋爱开销，要不要先说好 AA？」为例，用户看到的是一个三回合的辩论现场——每一句引言都是答主回答里的原句：</p>
+    <figure><img src="assets/02-arena.png" alt="辩论现场"></figure>
+    <figcaption>辩论现场：三回合 · 六条真实观点 · 每句标注「原回答中的核对原句」，可一键回知乎查证</figcaption>
+
+    <h3>当 AI 只在主动点击时介入</h3>
+    <div class="shots-2">
+      <figure><img src="assets/03-summary.png" alt="AI 摘要一句一行"></figure>
+      <figure><img src="assets/04-critic.png" alt="AI 质询弹窗"></figure>
+    </div>
+    <figcaption>左：AI 观点摘要，一句一行，只提炼不演绎；右：AI 质询弹窗——明确标注「这是 AI 模拟的反驳，不是答主本人说的话，答主不知道、也没有参与」，反驳论据只允许取自该回答原文</figcaption>
+    <p>这是我们对「AI 模拟」的态度：<b>模仿立场可以，冒充本人不行</b>。弹窗里的这句声明不是法律免责，而是产品的诚实加分项。</p>
+  </section>
+
+  <!-- 技术方案 -->
+  <section>
+    <h2>三、整体技术实现方案<span class="en">ARCHITECTURE</span></h2>
+
+    <h3>3.1 Agent 式检索管线：用多关键词突破搜索上限</h3>
+    <p>知乎搜索一次最多返回 10 条结果——单一查询就像一个窄窗口，立场相反的回答经常被排在窗口之外。知辨把它做成了一个<b>小型 Agent 管线</b>，六步里有两步由模型自主决策、两步有确定性守卫：</p>
+    <div class="flow">
+      <span class="step">① AI 扩词<br><small>按正反用词生成多组关键词</small></span><span class="arrow">→</span>
+      <span class="step">② 多路搜索<br><small>每组各搜一次，各取 10 条</small></span><span class="arrow">→</span>
+      <span class="step">③ 合并去重<br><small>候选池 10 → 30+ 条</small></span><span class="arrow">→</span>
+      <span class="step">④ AI 相关性筛选<br><small>只留直接讨论该题的回答</small></span><span class="arrow">→</span>
+      <span class="step">⑤ AI 编排配对<br><small>把立场相反的回答配成回合</small></span><span class="arrow">→</span>
+      <span class="step">⑥ 逐字校验 + 独立复核</span>
+    </div>
+    <div class="flow">
+      <span class="step guard">守卫 A：原句逐字定位</span>
+      <span class="step guard">守卫 B：另一位 AI 裁判独立复核「两边是否真对立」</span>
+      <span class="step guard">守卫 C：配不出就退回观点阅读，不补写</span>
+    </div>
+    <p>生成的关键词按辩题<b>落盘复用</b>（行为可复现，不重复烧调用）；若某题已知回合不完整，本轮自动重掷一套关键词再试。用户在加载时能实时看到管线的每一步真实进度——「是真在搜，不是装忙」：</p>
+    <figure><img src="assets/05-search.png" alt="搜索页多关键词检索"></figure>
+    <figcaption>搜索页如实展示：「用了 4 组关键词，每组最多 10 条，已合并去重」——找到 32 条真实回答；右侧同步解释自动编排的校验流程</figcaption>
+
+    <h3>3.2 界面与美术：一套原生的知乎风格 UI</h3>
+    <p>知辨没有发明自己的视觉语言——它直接长在知乎的设计基因上，<b>从布局到配色全是知乎风</b>：</p>
+    <ul>
+      <li><b>布局</b>：顶栏 + 主信息流 + 右侧栏的三栏结构；辩题以信息流行呈现（标题 / 知乎原题 / 摘要 / 左 VS 右 / 动作），与知乎首页的阅读动线完全一致；</li>
+      <li><b>色彩</b>：主色即知乎蓝（#1772F6），链接、徽标、主动按钮一脉相承；对立阵营用蓝色与珊瑚橙区分，是辩论语义的强调色，不破坏整体的知乎气质；</li>
+      <li><b>元素</b>：卡片、标签、徽标、圆角与分割线的规格对齐知乎组件语言；「人工核对 / AI 编排」徽标、VS 分隔、引句标签都做了知乎式的轻量处理；</li>
+      <li><b>效果</b>：对知乎用户<b>零学习成本</b>——第一次打开就像回到了知乎的一个熟悉板块，而不是一个陌生工具。</li>
+    </ul>
+    <figure><img src="assets/01-lobby.png" alt="大厅信息流"></figure>
+    <figcaption>大厅：顶栏 + 信息流 + 右侧栏，三栏结构与知乎首页同构</figcaption>
+
+    <h3>3.3 工程架构</h3>
+    <table>
+      <tr><th style="width:26%">模块</th><th>职责与要点</th></tr>
+      <tr><td><b>同源 Web 前端</b><br><small>原生 JS，无框架依赖</small></td><td>知乎风格信息流界面；轮播、筛选、弹层全部自研；AI 与人工编排用不同徽标严格区分</td></tr>
+      <tr><td><b>Node 服务</b><br><small>scripts/serve.mjs</small></td><td>静态服务 + API 路由；搜索 15min 缓存、60 次/小时限流（可配置）、跨站防护；只绑定本机</td></tr>
+      <tr><td><b>知乎官方 CLI 适配</b></td><td>搜索取数走官方 CLI；来源规范化清洗；凭据走系统凭据库，不进代码与浏览器</td></tr>
+      <tr><td><b>模型适配层</b></td><td>OpenAI 兼容接口；四个能力：扩词、筛选、编排、质询；每个能力独立缓存与降级路径</td></tr>
+      <tr><td><b>校验层</b><br><small>arrange.mjs</small></td><td>逐字定位（容忍空白差异）、一左一右、作者不同、同回答只用一次、必须给出共同问题、立场必须相反——任一不满足即丢弃该回合</td></tr>
+      <tr><td><b>运行数据</b><br><small>json-store.mjs</small></td><td>题目健康度（真实渲染回合数）与关键词计划落盘；临时文件 + 原子重命名，防半截写入</td></tr>
+    </table>
+
+    <h3>3.4 质量验证</h3>
+    <div class="kpis">
+      <div class="kpi"><b>85</b><span>项自动化测试全通过</span></div>
+      <div class="kpi"><b>0</b><span>次虚构内容补位（设计上不可能）</span></div>
+      <div class="kpi"><b>10→32</b><span>多关键词候选池实测扩大</span></div>
+      <div class="kpi"><b>17</b><span>道常驻辩题全量巡检</span></div>
+    </div>
+    <p>测试体系用受控上游响应，不消耗真实搜索额度；覆盖观看流程、来源安全、自动编排校验、辩题库检索、页面交互与进度上报。退化题的巡检一条命令可复现（<b>audit-curated.mjs</b>）。</p>
+    <img src="assets/concept-verify.png" alt="逐句搬运并核对的概念示意" style="width:88%; display:block; margin:20px auto; border-radius:14px; box-shadow:0 10px 30px rgba(23,114,246,.10);">
+    <figcaption style="text-align:center; font-size:13px; color:var(--text-3); margin-bottom:8px;">概念示意：原话逐句搬运、逐句核对，不改写、不代说</figcaption>
+  </section>
+
+  <!-- 生态契合 -->
+  <section>
+    <h2>四、与知乎社区生态的契合度与场景价值<span class="en">ECOSYSTEM FIT</span></h2>
+
+    <h3>4.1 我们是知乎内容生态的「放大器」，不是「搬运工」</h3>
+    <ul>
+      <li><b>不复制回答正文</b>：数据库里只存来源 ID 与已核对的原句片段，回答全文永远通过「原文与来源」按钮跳回知乎；</li>
+      <li><b>为优质回答带来二次曝光</b>：立场相反的低赞优质回答，在知辨里与高赞回答同桌出现——这恰是算法时间线给不了的曝光位；</li>
+      <li><b>每一条观点都可回链</b>：用户被引句吸引后，点击即达知乎原回答页面，为知乎带回意图明确的深度阅读流量；</li>
+      <li><b>合规取数</b>：全部数据通过知乎官方 CLI 获取，遵守平台凭据体系，不做爬虫、不绕过任何访问控制；</li>
+      <li><b>界面是生态的延伸</b>：从布局到配色全套知乎风的 UI（见 3.2），让用户把知辨当作知乎的「辩论阅读层」，而不是一个要重新学习的外部工具——视觉心智上的无缝，本身就是生态契合的一部分。</li>
+    </ul>
+
+    <h3>4.2 场景价值：三类真实场景</h3>
+    <table>
+      <tr><th style="width:22%">场景</th><th>今天的样子</th><th style="width:30%">知辨带来的价值</th></tr>
+      <tr><td><b>围观者</b><br><small>热点话题的深度消费者</small></td><td>热榜只给标题和情绪，评论区吵几百楼看不到全貌</td><td>十分钟听完两边最有代表性的道理，每句可溯源</td></tr>
+      <tr><td><b>犹豫者</b><br><small>正面临真实选择的人</small></td><td>搜「该不该裸辞」，看到的多是单边高赞故事</td><td>正反条件与依据并排呈现，帮你想清楚而不是替你决定</td></tr>
+      <tr><td><b>答主</b><br><small>认真写回答的创作者</small></td><td>认真写的少数派观点沉底，无人看见</td><td>被编排进辩论现场，获得与高赞同桌的曝光与回链</td></tr>
+    </table>
+
+    <h3>4.3 赛道契合：知识炼金场</h3>
+    <p>「炼金」是把矿石变成贵金属，而不是凭空造金子。知辨对知乎内容做的正是这件事：<b>原料</b>是真实回答（绝不虚构），<b>冶炼</b>是 AI 编排与多关键词检索（模型决策），<b>成品</b>是一场可溯源的对照阅读（结构化知识）。AI 在这里不是内容生产者，而是<b>内容组织者</b>——这正是「知识炼金场」赛道希望看到的 AI 与社区内容的关系。</p>
+
+    <div class="quote">我们相信：一个好问题值得听完两边。知辨不生产观点，它只是真实分歧的布景师。</div>
+  </section>
+
+  <!-- 辩题库 -->
+  <section>
+    <h2>五、内容资产：辩题库<span class="en">LIBRARY</span></h2>
+    <p>自动编排成功的辩题自动沉淀进辩题库，可按关键词、来源、分类检索。AI 编排与人工核对用徽标严格区分——AI 的题绝不冒充人工查过的：</p>
+    <figure><img src="assets/06-library.png" alt="辩题库"></figure>
+    <figcaption>辩题库：检索与筛选在客户端完成；「人工核对 / AI 编排」徽标让内容来源一目了然</figcaption>
+  </section>
+
+  <!-- 现状与计划 -->
+  <section>
+    <h2>六、项目现状与下一步<span class="en">STATUS & ROADMAP</span></h2>
+    <table>
+      <tr><th style="width:50%">已完成并实测</th><th>计划中</th></tr>
+      <tr><td>17 道人工核对常驻辩题 + 热榜自动收录</td><td>移动端（≤600px）像素级验收</td></tr>
+      <tr><td>Agent 式多关键词检索 + 关键词落盘复用</td><td>常驻题配置补存回答 URL（抗搜索排名漂移）</td></tr>
+      <tr><td>独立 AI 复核 + 逐字校验 + 诚实降级</td><td>回答区「追问串」：允许对同一条回答连续质询</td></tr>
+      <tr><td>实时进度上报（加载时可见 AI 每一步）</td><td>生成关键词质量系统性回归</td></tr>
+      <tr><td>85 项自动化测试全通过</td><td>面向评委的在线演示环境评估</td></tr>
+    </table>
+    <div class="callout"><b>如实声明：</b>当前为单用户本机演示服务，未做公网多用户隔离；多关键词检索能显著扩大候选池（实测 10 → 32 条），但单题恢复效果随知乎排名波动，不承诺每次都补齐全部回合——这类不确定我们会如实展示给用户，而不是掩盖。</div>
+  </section>
+
+  <div class="footer">知辨 · 让分歧被看见 · 真实来源 · 观点编排<br>知乎黑客松 2026 校园新锐季参赛作品</div>
+</div>
+</body>
+</html>
