@@ -2,6 +2,15 @@ import { plainText } from './zhihu.mjs';
 
 const defaultBaseUrl = 'https://api.deepseek.com';
 const defaultModel = 'deepseek-flash';
+// deepseek-flash sometimes sits in DeepSeek's queue: the response opens at once
+// but only keep-alive lines arrive, for a minute or more. When the model has not
+// started writing after a short wait, the same request goes to this model.
+const fallbackModel = 'deepseek-v4-pro';
+// The wait bounds only the time before output starts (queueing), never a long
+// answer that is already being written.
+const queueWaitMs = () => Math.max(1, Number(process.env.ZHIBIAN_AI_QUEUE_MS) || 5000);
+const FALLBACK_QUEUE_WAIT_MS = 15000;
+const TOTAL_TIMEOUT_MS = 90000;
 
 function providerError(code, message, status = 503) {
   return Object.assign(new Error(message), { code, status });
@@ -12,27 +21,100 @@ function contentOf(payload) {
   return plainText(Array.isArray(raw) ? raw.map(part => part?.text || '').join('') : raw);
 }
 
-async function chatWithDeepSeek({ system, user, maxTokens = 320, temperature = 0.2 }) {
+// Reads a server-sent-event completion. Blank lines and ": keep-alive" comments
+// are what a queued request receives; `onOutput` fires on the first real delta.
+async function readStream(body, onOutput) {
+  const reader = body.getReader(), decoder = new TextDecoder();
+  let buffer = '', content = '';
+  const handle = line => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === '[DONE]') return;
+    let event;
+    try { event = JSON.parse(data); } catch { return; }
+    if (event.error) throw providerError('AI_UPSTREAM', 'AI 服务暂时不可用，请稍后重试。');
+    const delta = event.choices?.[0]?.delta || {};
+    const piece = Array.isArray(delta.content) ? delta.content.map(part => part?.text || '').join('') : delta.content;
+    if (piece || delta.reasoning_content) onOutput();
+    if (piece) content += piece;
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    lines.forEach(handle);
+  }
+  buffer += decoder.decode();
+  if (buffer) handle(buffer);
+  return content;
+}
+
+async function requestCompletion({ model, system, user, maxTokens, temperature, firstOutputMs, totalMs }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) throw providerError('AI_NOT_CONFIGURED', 'AI 服务尚未配置，请检查服务端环境变量。');
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || defaultBaseUrl).replace(/\/+$/, '');
-  const response = await fetch(baseUrl + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: defaultModel,
-      temperature,
-      max_tokens: maxTokens,
-      thinking: { type: 'disabled' },
-      messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
-    })
-  });
-  if (!response.ok) throw providerError('AI_UPSTREAM', 'AI 服务暂时不可用，请稍后重试。', response.status === 429 ? 429 : 503);
-  let payload;
-  try { payload = await response.json(); } catch { throw providerError('AI_UPSTREAM', 'AI 返回格式无效。'); }
-  const content = contentOf(payload);
-  if (!content) throw providerError('AI_UPSTREAM', 'AI 没有返回有效内容。');
-  return { content, model: defaultModel };
+  const controller = new AbortController();
+  let stopped = null;
+  const stop = why => () => { stopped = why; controller.abort(); };
+  let queueTimer = setTimeout(stop('queued'), firstOutputMs);
+  const totalTimer = setTimeout(stop('timeout'), totalMs);
+  const started = () => { if (queueTimer) { clearTimeout(queueTimer); queueTimer = null; } };
+  try {
+    const response = await fetch(baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        temperature,
+        max_tokens: maxTokens,
+        stream: true,
+        thinking: { type: 'disabled' },
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
+      })
+    });
+    if (!response.ok) throw providerError('AI_UPSTREAM', 'AI 服务暂时不可用，请稍后重试。', response.status === 429 ? 429 : 503);
+    let content;
+    if (typeof response.body?.getReader === 'function') {
+      content = plainText(await readStream(response.body, started));
+    } else {
+      // A plain JSON reply: a proxy that ignores `stream`, or a test double.
+      started();
+      let payload;
+      try { payload = await response.json(); } catch { throw providerError('AI_UPSTREAM', 'AI 返回格式无效。'); }
+      content = contentOf(payload);
+    }
+    if (!content) throw providerError('AI_UPSTREAM', 'AI 没有返回有效内容。');
+    return { content, model };
+  } catch (error) {
+    if (stopped === 'queued') throw providerError('AI_QUEUED', `${model} 在 ${firstOutputMs}ms 内没有开始输出`);
+    if (stopped === 'timeout') throw providerError('AI_UPSTREAM', 'AI 服务响应超时，请稍后重试。');
+    if (error?.code === 'AI_UPSTREAM') throw error;
+    throw providerError('AI_UPSTREAM', 'AI 服务暂时不可用，请稍后重试。');
+  } finally {
+    clearTimeout(queueTimer);
+    clearTimeout(totalTimer);
+  }
+}
+
+// deepseek-flash first; if it is queued past the short wait or fails, the same
+// request goes to deepseek-v4-pro. The result names the model that answered.
+async function chatWithDeepSeek({ system, user, maxTokens = 320, temperature = 0.2 }) {
+  if (!process.env.DEEPSEEK_API_KEY) throw providerError('AI_NOT_CONFIGURED', 'AI 服务尚未配置，请检查服务端环境变量。');
+  const request = { system, user, maxTokens, temperature, totalMs: TOTAL_TIMEOUT_MS };
+  try {
+    return await requestCompletion({ ...request, model: defaultModel, firstOutputMs: queueWaitMs() });
+  } catch (primaryError) {
+    if (process.env.ZHIBIAN_DEBUG) console.error('[deepseek] primary model failed, using fallback:', primaryError.code, primaryError.message);
+    try {
+      return await requestCompletion({ ...request, model: fallbackModel, firstOutputMs: FALLBACK_QUEUE_WAIT_MS });
+    } catch (fallbackError) {
+      if (process.env.ZHIBIAN_DEBUG) console.error('[deepseek] fallback model failed:', fallbackError.code, fallbackError.message);
+      throw providerError('AI_UPSTREAM', 'AI 服务暂时不可用，请稍后重试。', primaryError.status === 429 || fallbackError.status === 429 ? 429 : 503);
+    }
+  }
 }
 
 export async function summarizeWithDeepSeek({ sourceId, text }) {
@@ -268,4 +350,4 @@ export async function verifyOppositionWithDeepSeek({ topic, rounds }) {
   return { verdicts, model: result.model };
 }
 
-export { defaultModel };
+export { defaultModel, fallbackModel };

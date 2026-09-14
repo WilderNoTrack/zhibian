@@ -49,6 +49,97 @@ test('DeepSeek critique uses the deepseek-flash model and returns a focused answ
   }
 });
 
+// ---- Streaming, queue wait and fallback ----
+const encoder = new TextEncoder();
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const delta = text => `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`;
+// A fake SSE body that stops (like real fetch) when the request is aborted.
+function streamResponse(signal, { events = [], hang = false, gap = 0 } = {}) {
+  const body = new ReadableStream({
+    async start(controller) {
+      const fail = () => { try { controller.error(new DOMException('aborted', 'AbortError')); } catch { /* already closed */ } };
+      if (signal?.aborted) return fail();
+      signal?.addEventListener('abort', fail, { once: true });
+      for (const [index, line] of events.entries()) {
+        if (gap && index > 0) await sleep(gap);
+        if (signal?.aborted) return;
+        try { controller.enqueue(encoder.encode(line)); } catch { return; }
+      }
+      if (!hang) { try { controller.close(); } catch { /* aborted */ } }
+    }
+  });
+  return { ok: true, status: 200, body };
+}
+async function withDeepSeek(fetchImpl, run, queueMs) {
+  const saved = { fetch: globalThis.fetch, key: process.env.DEEPSEEK_API_KEY, queue: process.env.ZHIBIAN_AI_QUEUE_MS };
+  globalThis.fetch = fetchImpl;
+  process.env.DEEPSEEK_API_KEY = 'test-key';
+  if (queueMs === undefined) delete process.env.ZHIBIAN_AI_QUEUE_MS; else process.env.ZHIBIAN_AI_QUEUE_MS = String(queueMs);
+  try { await run(); } finally {
+    globalThis.fetch = saved.fetch;
+    if (saved.key === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = saved.key;
+    if (saved.queue === undefined) delete process.env.ZHIBIAN_AI_QUEUE_MS; else process.env.ZHIBIAN_AI_QUEUE_MS = saved.queue;
+  }
+}
+
+test('DeepSeek streams the completion, ignoring keep-alive lines', async () => {
+  const requests = [];
+  await withDeepSeek(async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return streamResponse(options.signal, { events: [': keep-alive\n\n', delta('先把日子'), delta('过稳。'), 'data: [DONE]\n\n'] });
+  }, async () => {
+    const result = await summarizeWithDeepSeek({ sourceId: 'a1', text: '回答正文' });
+    assert.equal(result.summary, '先把日子过稳。');
+    assert.equal(result.model, 'deepseek-flash');
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].stream, true);
+    assert.deepEqual(requests[0].thinking, { type: 'disabled' });
+  });
+});
+
+test('a queued deepseek-flash request switches to deepseek-v4-pro after the short wait', async () => {
+  const requests = [];
+  await withDeepSeek(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push(body.model);
+    return body.model === 'deepseek-flash'
+      ? streamResponse(options.signal, { events: [': keep-alive\n\n', ': keep-alive\n\n'], hang: true })
+      : streamResponse(options.signal, { events: [delta('备用模型写出的摘要。'), 'data: [DONE]\n\n'] });
+  }, async () => {
+    const started = Date.now();
+    const result = await summarizeWithDeepSeek({ sourceId: 'a1', text: '回答正文' });
+    assert.equal(result.summary, '备用模型写出的摘要。');
+    assert.equal(result.model, 'deepseek-v4-pro', 'the card names the model that actually answered');
+    assert.deepEqual(requests, ['deepseek-flash', 'deepseek-v4-pro']);
+    assert.ok(Date.now() - started < 1500, 'the switch happens after the queue wait, not after a full timeout');
+  }, 60);
+});
+
+test('a slow answer that has already started is not switched to the fallback', async () => {
+  const requests = [];
+  await withDeepSeek(async (_url, options) => {
+    requests.push(JSON.parse(options.body).model);
+    return streamResponse(options.signal, { events: [delta('第一句。'), delta('第二句。'), delta('第三句。'), 'data: [DONE]\n\n'], gap: 80 });
+  }, async () => {
+    const result = await summarizeWithDeepSeek({ sourceId: 'a1', text: '回答正文' });
+    assert.equal(result.model, 'deepseek-flash');
+    assert.match(result.summary, /第三句/);
+    assert.deepEqual(requests, ['deepseek-flash']);
+  }, 50);
+});
+
+test('when both models fail the caller gets a plain AI_UPSTREAM error', async () => {
+  const requests = [];
+  await withDeepSeek(async (_url, options) => {
+    const model = JSON.parse(options.body).model;
+    requests.push(model);
+    return model === 'deepseek-flash' ? streamResponse(options.signal, { events: [': keep-alive\n\n'], hang: true }) : { ok: false, status: 503 };
+  }, async () => {
+    await assert.rejects(summarizeWithDeepSeek({ sourceId: 'a1', text: '回答正文' }), error => error.code === 'AI_UPSTREAM');
+    assert.deepEqual(requests, ['deepseek-flash', 'deepseek-v4-pro']);
+  }, 40);
+});
+
 test('DeepSeek filters a batch of search results for direct topic relevance without assigning sides', async () => {
   const originalFetch = globalThis.fetch;
   let request;

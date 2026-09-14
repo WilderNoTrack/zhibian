@@ -384,7 +384,7 @@ function openAsk() {
   document.querySelector('#ask-query')?.focus();
 }
 function openAbout() {
-  openDialog(dialogHeader('关于这个版本', '真实观点，重新相遇。'), '<div class="about-content"><p>观点、作者与认证来自知乎官方接口；卡片上的 AI 观点摘要只针对接口返回的回答正文，不评价作者，也不补充原文之外的事实。</p><p>点击“原文与来源”可以阅读接口返回的正文并打开知乎完整上下文；新辩题搜索结果会先自动筛掉与题目无关的回答。</p><p>自由提问可以先按观点阅读，也可以点“自动编排”：AI 会把真实存在分歧的回答配成对照回合，并抄回逐字原句，服务端再与知乎返回的正文核对一次，对不上的席位直接丢弃。它只是阅读顺序，不代表谁赢。</p><p>已编排场次采用人工核对的来源与原句匹配。接口不再返回某条内容、或其依据发生变化时，该席位不会用虚构内容补齐。AI 质询与摘要统一使用 deepseek-flash，相关性筛选不负责分阵营。</p></div>', 'about-dialog');
+  openDialog(dialogHeader('关于这个版本', '真实观点，重新相遇。'), '<div class="about-content"><p>观点、作者与认证来自知乎官方接口；卡片上的 AI 观点摘要只针对接口返回的回答正文，不评价作者，也不补充原文之外的事实。</p><p>点击“原文与来源”可以阅读接口返回的正文并打开知乎完整上下文；新辩题搜索结果会先自动筛掉与题目无关的回答。</p><p>自由提问可以先按观点阅读，也可以点“自动编排”：AI 会把真实存在分歧的回答配成对照回合，并抄回逐字原句，服务端再与知乎返回的正文核对一次，对不上的席位直接丢弃。它只是阅读顺序，不代表谁赢。</p><p>已编排场次采用人工核对的来源与原句匹配。接口不再返回某条内容、或其依据发生变化时，该席位不会用虚构内容补齐。AI 质询与摘要默认使用 deepseek-flash，排队超过 5 秒自动改用 deepseek-v4-pro，卡片上会标出实际作答的模型；相关性筛选不负责分阵营。</p></div>', 'about-dialog');
 }
 async function runCritique(form) {
   const s = current?.rounds[state.round]?.[Number(form.dataset.side)], question = form.elements.question.value.trim(), result = document.querySelector('[data-critique-result]'), button = form.querySelector('button[type="submit"]');
