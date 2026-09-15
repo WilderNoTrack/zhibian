@@ -10,6 +10,7 @@ import { loadAutoTopics, loadHotAttempts, saveAutoTopic, publicAutoTopic, draftF
 import { debateSeeds } from './debate-seeds.mjs';
 import { loadTopicHealth, recordTopicHealth, knownRounds } from './topic-health.mjs';
 import { loadTopicQueries, saveTopicQueries, storedQueries } from './topic-queries.mjs';
+import { memoryHotState, fileHotState, beijingDay, nextBeijingMidnight } from './hot-budget.mjs';
 
 const root = path.resolve(fileURLToPath(new URL('../web/', import.meta.url)));
 const port = Number(process.env.PORT || 5173);
@@ -37,7 +38,7 @@ async function serveStatic(req, res) {
     res.end('Not found');
   }
 }
-export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, summarize = summarizeWithDeepSeek, critique = critiqueWithDeepSeek, filter = filterWithDeepSeek, arrange = arrangeWithDeepSeek, verifyOpposition = verifyOppositionWithDeepSeek, expandQueries = expandQueriesWithDeepSeek } = {}) {
+export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, summarize = summarizeWithDeepSeek, critique = critiqueWithDeepSeek, filter = filterWithDeepSeek, arrange = arrangeWithDeepSeek, verifyOpposition = verifyOppositionWithDeepSeek, expandQueries = expandQueriesWithDeepSeek, hotState = memoryHotState(), hotDailyLimit = Number(process.env.ZHIBIAN_HOT_DAILY_LIMIT) || 10, clock = () => Date.now() } = {}) {
   // The eight hand-built categories; AI topics may only be filed into one of
   // these, never into a category of their own. The hints tell the model what
   // each one actually covers, so a headline like "餐馆利润靠酒水" lands in
@@ -55,7 +56,7 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
   };
   const categoryHintText = allowedCategories.map(name => `${name}（${CATEGORY_HINTS[name] || ''}）`).join('；');
   const cache = new Map(), inFlight = new Map(), summaryCache = new Map(), summaryInFlight = new Map(), critiqueCache = new Map(), critiqueInFlight = new Map(), filterCache = new Map(), filterInFlight = new Map(), arrangeCache = new Map(), arrangeInFlight = new Map(), oppositionCache = new Map(), oppositionInFlight = new Map(), queryCache = new Map();
-  let hotCache, hotPending, hotCooldown = 0;
+  let hotPending = null;
   let windowStart = Date.now(), calls = 0, cooldown = 0;
   // Each topic now costs one search per query variant, so this ceiling is shared
   // across more work than before; it stays tunable for demos and for tests.
@@ -64,27 +65,49 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.end(JSON.stringify(data));
   };
+  // The hot list has its own small daily quota, and every lobby load used to be
+  // able to spend a call. Now it is fetched at most `hotDailyLimit` times per
+  // Beijing calendar day, never twice within 24h / limit, and not at all after
+  // Zhihu reports the quota used up until the next Beijing midnight. Between
+  // fetches the last list is reused, however old. A call is counted before it is
+  // made, so a crash or timeout mid-call still counts.
+  const HOT_LIMIT = Math.max(1, Math.floor(hotDailyLimit));
+  const HOT_MIN_INTERVAL = 24 * 60 * 60 * 1000 / HOT_LIMIT;
   async function cachedHot() {
-    const now = Date.now();
-    if (hotCache && now - hotCache.fetched < 30 * 60 * 1000) return {...hotCache.data, cached:true};
     if (hotPending) return hotPending;
-    if (now < hotCooldown) throw {status:429, code:'RATE_LIMIT', message:'热榜暂时不可用，请稍后再试；分类仍可浏览。'};
+    const state = await hotState.load();
+    // Checked again after the await: a concurrent request may have started the call.
+    if (hotPending) return hotPending;
+    const at = clock();
+    if (state.day !== beijingDay(at)) { state.day = beijingDay(at); state.calls = 0; }
+    const last = Array.isArray(state.last?.data?.items) ? state.last : null;
+    if (last && at - last.fetched < HOT_MIN_INTERVAL) return { ...last.data, cached: true };
+    const holding = at < (state.blockedUntil || 0) || at - (state.lastCallAt || 0) < HOT_MIN_INTERVAL || (state.calls || 0) >= HOT_LIMIT;
+    if (holding) {
+      if (last) return { ...last.data, cached: true };
+      throw { status: 429, code: 'RATE_LIMIT', message: '热榜今天的刷新次数已用完或未到下次刷新时间；分类仍可浏览。' };
+    }
+    state.calls = (state.calls || 0) + 1;
+    state.lastCallAt = at;
     hotPending = (async () => {
+      await hotState.save();
       try {
         const result = await hot();
-        if (result.Code === 30001) throw {status:429, code:'RATE_LIMIT', message:'知乎热榜额度或频率受限，请稍后再试。'};
-        if (result.Code === 20001) throw {status:503, code:'AUTH_REQUIRED', message:'热榜凭据不可用，请检查官方 CLI 配置。'};
-        if (result.Code === 'CLI_MISSING') throw {status:503, code:'CLI_MISSING', message:'找不到知乎 CLI。'};
+        if (result.Code === 30001) {
+          state.blockedUntil = nextBeijingMidnight(clock());
+          throw { status: 429, code: 'RATE_LIMIT', message: '知乎热榜今日额度已用完，明天再刷新；分类仍可浏览。' };
+        }
+        if (result.Code === 20001) throw { status: 503, code: 'AUTH_REQUIRED', message: '热榜凭据不可用，请检查官方 CLI 配置。' };
+        if (result.Code === 'CLI_MISSING') throw { status: 503, code: 'CLI_MISSING', message: '找不到知乎 CLI。' };
         if (result.Code !== 0 || !Array.isArray(result.Data?.Items)) throw new Error('UPSTREAM_ERROR');
-        const data = {items:normalizeHotItems(result), fetchedAt:new Date().toISOString(), cached:false};
-        hotCache = {fetched:Date.now(), data};
+        const data = { items: normalizeHotItems(result), fetchedAt: new Date(clock()).toISOString(), cached: false };
+        state.last = { fetched: clock(), data };
         return data;
-      } catch (error) {
-        hotCooldown = Date.now() + 5 * 60 * 1000;
-        throw error;
+      } finally {
+        await hotState.save();
       }
     })();
-    try {return await hotPending;} finally {hotPending = null;}
+    try { return await hotPending; } finally { hotPending = null; }
   }
   // At most two Zhihu CLI searches run at once. A search that finds both slots
   // busy waits for its turn instead of failing, so carousel previews and the
@@ -627,7 +650,9 @@ async function loadLocalEnv() {
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await loadLocalEnv();
-  http.createServer(handleRequest).listen(port, '127.0.0.1', () => {
+  // The real server keeps the hot-list call count on disk, so a restart or a
+  // deploy cannot spend the day's quota again.
+  http.createServer(createRequestHandler({ hotState: fileHotState() })).listen(port, '127.0.0.1', () => {
     console.log('Zhibian preview: http://localhost:' + port);
   });
 }
