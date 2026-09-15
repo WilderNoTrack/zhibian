@@ -1,5 +1,6 @@
 import { createState, transition, escapeHtml as h, pickFeatured } from './data.js';
 import { icon, avatar, sourceLink, stamp, displayTitle } from './ui.js';
+import { debateBody, debateDocument, exportFileName } from './export.js';
 import { lobbyView, categories, page } from './lobby.js';
 import { libraryView, libraryResults } from './library.js';
 
@@ -296,7 +297,7 @@ function questionHeader() {
       <div class="tag-row">${current.category ? `<span class="tag">${h(current.category)}</span>` : ''}<span class="tag tag-plain">${auto ? '自由辩题' : '本场辩题'}</span>${auto ? '<span class="badge badge-auto">AI 自动编排 · 原句已逐字校验</span>' : '<span class="badge badge-curated">已核对原句</span>'}</div>
       <h1 class="question-title">${h(current.title)}</h1>
       ${current.intro ? `<p class="question-detail">${h(current.intro)}</p>` : ''}
-      <div class="question-actions"><button class="btn-primary" data-action="sources">${icon('book')}查看 ${current.items.length} 条来源</button><button class="btn-secondary" data-action="topics">${icon('grid')}换个辩题</button>${state.view === 'recap' ? `<button class="btn-ghost" data-action="arena">${icon('back')}回到辩论</button>` : ''}</div>
+      <div class="question-actions"><button class="btn-primary" data-action="sources">${icon('book')}查看 ${current.items.length} 条来源</button><button class="btn-secondary" data-action="topics">${icon('grid')}换个辩题</button>${n ? `<button class="btn-secondary" data-action="export">${icon('download')}下载本场</button>` : ''}${state.view === 'recap' ? `<button class="btn-ghost" data-action="arena">${icon('back')}回到辩论</button>` : ''}</div>
     </div>
     <dl class="number-board">${n ? `<div><dt>回合</dt><dd>${n}</dd></div><div><dt>真实观点</dt><dd>${n * 2}</dd></div>` : `<div><dt>知乎来源</dt><dd>${current.items.length}</dd></div>`}</dl>
   </div></section>`;
@@ -354,7 +355,7 @@ function recap() {
     <div class="recap-pair">${[0, 1].map(side => `<section class="card recap-camp ${sideTone(side)}"><div class="camp-heading"><span class="side-label">${sideName(side)}</span><h3>${h(side ? current.right : current.left)}</h3></div>${current.rounds.map(pair => `<blockquote>${h(pair[side].evidence)}<cite>${avatar(pair[side], 'tiny')}<span>${h(pair[side].name)}</span>${sourceLink(pair[side], '原文')}</cite></blockquote>`).join('')}</section>`).join('')}</div>
     <section class="card questions-card"><h2>看完之后，还可以核对什么？</h2><ol>${current.questions.map(q => `<li>${h(q)}</li>`).join('')}</ol></section>
     <p class="recap-disclaimer">引述来自知乎 API 返回正文；AI 摘要只是阅读辅助。核对问题为编辑提示，不是 AI 裁决，也不判定哪位答主获胜。</p>
-    <section class="card recap-actions"><button class="btn-secondary" data-action="arena">${icon('back')}回到辩论</button><button class="btn-secondary" data-action="sources">查看本场来源</button><button class="btn-primary" data-action="topics">再看一个辩题${icon('arrow')}</button></section>`;
+    <section class="card recap-actions"><button class="btn-secondary" data-action="arena">${icon('back')}回到辩论</button><button class="btn-secondary" data-action="sources">查看本场来源</button><button class="btn-secondary" data-action="export">${icon('download')}下载本场</button><button class="btn-primary" data-action="topics">再看一个辩题${icon('arrow')}</button></section>`;
 }
 
 // ---- Dialogs ----
@@ -386,6 +387,111 @@ function openAsk() {
 function openAbout() {
   openDialog(dialogHeader('关于这个版本', '真实观点，重新相遇。'), '<div class="about-content"><p>观点、作者与认证来自知乎官方接口；卡片上的 AI 观点摘要只针对接口返回的回答正文，不评价作者，也不补充原文之外的事实。</p><p>点击“原文与来源”可以阅读接口返回的正文并打开知乎完整上下文；新辩题搜索结果会先自动筛掉与题目无关的回答。</p><p>自由提问可以先按观点阅读，也可以点“自动编排”：AI 会把真实存在分歧的回答配成对照回合，并抄回逐字原句，服务端再与知乎返回的正文核对一次，对不上的席位直接丢弃。它只是阅读顺序，不代表谁赢。</p><p>已编排场次采用人工核对的来源与原句匹配。接口不再返回某条内容、或其依据发生变化时，该席位不会用虚构内容补齐。AI 质询与摘要默认使用 deepseek-flash，排队超过 5 秒自动改用 deepseek-v4-pro，卡片上会标出实际作答的模型；相关性筛选不负责分阵营。</p></div>', 'about-dialog');
 }
+// ---- Download a debate (HTML file / print to PDF) ----
+let exportVersion = 0, exportCss = null;
+function openExport() {
+  if (!current?.rounds.length) return;
+  const n = current.rounds.length;
+  openDialog(dialogHeader('把这场辩论带走', '下载本场辩论'), `<p class="export-lead">把「${h(current.title)}」整理成一份文件，方便分享、存档或打印。</p>
+    <ul class="export-contents"><li>全部 ${n} 个回合：双方答主、核对原句与编排说明</li><li>每条观点的 AI 摘要（没打开过的回合会现在生成）</li><li>知乎原文链接、“还可以核对什么”和来源说明</li></ul>
+    <div class="export-options">
+      <button class="export-option" data-action="export-html">${icon('download')}<b>下载 HTML</b><small>单个网页文件，离线双击就能打开，排版和网站一致</small></button>
+      <button class="export-option" data-action="export-pdf">${icon('file')}<b>保存为 PDF</b><small>打开打印窗口，“目标打印机”选择“另存为 PDF”</small></button>
+    </div>
+    <p class="export-status" data-export-status role="status" aria-live="polite"></p>
+    <p class="dialog-footnote">文件只含核对原句与原文链接，不含回答全文，引用原句版权归原作者。微信、QQ 内置浏览器可能无法下载或打印，请用系统浏览器打开。</p>`, 'export-dialog');
+}
+function exportStatus(text, error = false) {
+  const node = document.querySelector('[data-export-status]');
+  if (!node) return;
+  node.textContent = text;
+  node.classList.toggle('error', error);
+}
+// Every seat's AI summary, reusing what the page already loaded. Two at a time,
+// each capped at 30 s; a summary that fails is marked as missing, never invented.
+async function collectSummaries(debate) {
+  const seats = debate.rounds.flat(), result = new Map(), queue = [...seats];
+  let done = 0;
+  exportStatus(`正在整理 AI 观点摘要（0 / ${seats.length}）…`);
+  const worker = async () => {
+    while (queue.length) {
+      const seat = queue.shift(), text = seat.originalText || seat.text, key = seat.id + ' ' + text;
+      try {
+        let data = summaryCache.get(key);
+        if (!data) {
+          const controller = new AbortController(), timer = window.setTimeout(() => controller.abort(), 30000);
+          try {
+            data = await api('/api/summarize', controller.signal, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: seat.id, text }) });
+          } finally { window.clearTimeout(timer); }
+          summaryCache.set(key, data);
+        }
+        result.set(seat.id, { summary: summaryLines(data.summary), model: data.model || '' });
+      } catch { result.set(seat.id, null); }
+      exportStatus(`正在整理 AI 观点摘要（${++done} / ${seats.length}）…`);
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  return result;
+}
+function debateLink(debate) {
+  const id = String(debate.id || state.topicId || '');
+  return window.location.origin + (id.startsWith('q:') ? '/debate?q=' + encodeURIComponent(id.slice(2)) : '/debate?id=' + encodeURIComponent(id));
+}
+function downloadFile(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url; link.download = name; link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+// The site's own print stylesheet hides the app and shows only this block, so
+// the PDF uses the same layout as the downloaded file. The document title
+// becomes the default file name in the save dialog.
+function printDebate(markup, title) {
+  document.querySelector('.zb-export-print')?.remove();
+  const holder = document.createElement('div');
+  holder.className = 'zb-export-print';
+  holder.innerHTML = markup;
+  document.body.append(holder);
+  const previousTitle = document.title;
+  document.title = title;
+  document.body.classList.add('zb-printing');
+  window.addEventListener('afterprint', () => {
+    holder.remove();
+    document.body.classList.remove('zb-printing');
+    document.title = previousTitle;
+  }, { once: true });
+  window.setTimeout(() => window.print(), 60);
+}
+async function runExport(kind) {
+  const debate = current;
+  if (!debate?.rounds.length) return;
+  const version = ++exportVersion;
+  document.querySelectorAll('.export-option').forEach(button => { button.disabled = true; });
+  try {
+    const summaries = await collectSummaries(debate);
+    if (version !== exportVersion || current !== debate) return;
+    const exportedAt = new Date(), options = { summaries, exportedAt, pageUrl: debateLink(debate) };
+    if (kind === 'html') {
+      if (exportCss === null) exportCss = await fetch('/export.css').then(response => (response.ok ? response.text() : ''));
+      const name = exportFileName(debate.title, exportedAt, 'html');
+      downloadFile(name, debateDocument(debate, { ...options, css: exportCss }), 'text/html;charset=utf-8');
+      exportStatus(`已开始下载「${name}」。`);
+      announce('辩论已导出为 HTML 文件。');
+    } else {
+      closeDialog();
+      printDebate(debateBody(debate, options), exportFileName(debate.title, exportedAt, 'pdf').replace(/\.pdf$/, ''));
+      announce('已打开打印窗口，选择“另存为 PDF”即可保存。');
+    }
+  } catch (error) {
+    if (version === exportVersion) exportStatus('导出失败：' + (error.message || '请稍后再试。'), true);
+  } finally {
+    if (version === exportVersion) document.querySelectorAll('.export-option').forEach(button => { button.disabled = false; });
+  }
+}
+
 async function runCritique(form) {
   const s = current?.rounds[state.round]?.[Number(form.dataset.side)], question = form.elements.question.value.trim(), result = document.querySelector('[data-critique-result]'), button = form.querySelector('button[type="submit"]');
   if (!s || !question || !result || !button) return;
@@ -513,6 +619,9 @@ document.addEventListener('click', e => {
   if (action === 'library') return navigate('/library');
   if (action === 'ask') return openAsk();
   if (action === 'about') return openAbout();
+  if (action === 'export') return openExport();
+  if (action === 'export-html') return void runExport('html');
+  if (action === 'export-pdf') return void runExport('pdf');
   if (action === 'library-filter') {
     libraryState = { ...libraryState, [button.dataset.group]: button.dataset.value };
     document.querySelectorAll(`[data-action="library-filter"][data-group="${button.dataset.group}"]`).forEach(chip => {

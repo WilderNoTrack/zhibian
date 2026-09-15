@@ -8,7 +8,7 @@ const paths = {
   book: '<path d="M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v15c-4-1-6 0-9 2-3-2-5-3-9-2V4Z"/>',
   spark: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/>',
-  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v1"/>', guide: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>', sound: '<path d="M4 10v4m4-8v12m4-14v16m4-13v10m4-7v4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v1"/>', guide: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>', download: '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/>', file: '<path d="M7 3h7l5 5v13H7V3Z"/><path d="M14 3v5h5M10 13h6m-6 4h6"/>', sound: '<path d="M4 10v4m4-8v12m4-14v16m4-13v10m4-7v4"/>',
   fire: '<path d="M12 3c1 3 5.5 5 5.5 10.5a5.5 5.5 0 0 1-11 0c0-2.2 1-3.8 2.2-4.8 0 2 1 3.2 2.1 3.2 0-3.2-1-5.4 1.2-8.9Z"/>',
   up: '<path d="M12 6 5 17h14L12 6Z"/>', chat: '<path d="M4 5h16v11H9l-5 4V5Z"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',

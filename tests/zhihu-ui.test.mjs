@@ -114,6 +114,41 @@ test('rounds advance to the recap and seats jump back into the arena', () => {
   assert.match(doc.querySelector('.round-position').textContent, /第 2/);
 });
 
+test('a debate downloads as a self-contained HTML file and prints as PDF', async () => {
+  const saved = { create: URL.createObjectURL, revoke: URL.revokeObjectURL, click: dom.window.HTMLAnchorElement.prototype.click, print: dom.window.print };
+  let blob = null, downloadName = null, printed = 0;
+  URL.createObjectURL = value => { blob = value; return 'blob:zhibian-test'; };
+  URL.revokeObjectURL = () => {};
+  dom.window.HTMLAnchorElement.prototype.click = function () { downloadName = this.download; };
+  dom.window.print = () => { printed++; };
+  try {
+    click('.question-actions [data-action="export"]');
+    assert.match(doc.querySelector('dialog h2').textContent, /下载本场辩论/);
+    click('dialog [data-action="export-html"]');
+    await until(() => downloadName, 'html download');
+    assert.match(downloadName, /^知辨-.+-\d{8}\.html$/);
+    const html = await blob.text();
+    assert.match(html, /^<!doctype html>/i);
+    assert.doesNotMatch(html, /<script/i);
+    assert.equal((html.match(/class="zb-answer (left|right)"/g) || []).length, 6, 'all three rounds, both sides');
+    assert.match(html, /AI 摘要测试/, 'summaries for rounds that were never opened are generated too');
+    assert.match(html, /\.zb-export/, 'the stylesheet is inlined');
+    assert.match(doc.querySelector('[data-export-status]').textContent, /已开始下载/);
+
+    click('dialog [data-action="export-pdf"]');
+    await until(() => printed === 1, 'print dialog');
+    assert.ok(doc.body.classList.contains('zb-printing'));
+    assert.equal(doc.querySelectorAll('.zb-export-print .zb-answer').length, 6);
+    assert.match(doc.title, /^知辨-/, 'the save dialog suggests a readable file name');
+    dom.window.dispatchEvent(new dom.window.Event('afterprint'));
+    assert.equal(doc.querySelector('.zb-export-print'), null, 'the print view is removed afterwards');
+    assert.ok(!doc.body.classList.contains('zb-printing'));
+  } finally {
+    URL.createObjectURL = saved.create; URL.revokeObjectURL = saved.revoke;
+    dom.window.HTMLAnchorElement.prototype.click = saved.click; dom.window.print = saved.print;
+  }
+});
+
 test('lobby shows the hot carousel, composer and category feed', async () => {
   click('.app-nav [data-action="topics"]');
   await until(() => doc.querySelector('#featured-track'), 'lobby');

@@ -231,6 +231,11 @@ export const tours = {
       body: '<p>一次看完这场用到的所有知乎回答正文，每条都附知乎原文链接。</p>'
     },
     {
+      target: '.question-actions [data-action="export"]', placement: 'bottom',
+      title: '把这场辩论带走',
+      list: ['<b>下载 HTML</b>：单个网页文件，离线双击就能打开', '<b>保存为 PDF</b>：打开打印窗口，选“另存为 PDF”', '文件里有全部回合的核对原句、AI 摘要和知乎原文链接，适合分享和存档']
+    },
+    {
       target: '.lineup', placement: 'bottom',
       title: '双方阵容',
       list: [`${left} 在左、${right} 在右，卡片标题就是这一方的立场`, '每个头像对应<b>一个回合</b>的答主，点头像直接跳到那一回合', '底色高亮的，是正在台上的两位']
