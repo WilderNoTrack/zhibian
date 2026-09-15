@@ -3,7 +3,7 @@
 // list. Only source ids and already-verified quotes are stored; opening one
 // re-runs the search and re-checks every quote. Nothing here is ever marked as
 // human-reviewed.
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -33,19 +33,47 @@ function isValid(topic) {
     && Array.isArray(topic.lenses) && Array.isArray(topic.hosts);
 }
 
+const emptyStore = () => ({ topics: [], hotAttempts: [] });
+
+// Reads the file for real. A missing file is an empty library. A file that
+// cannot be read at all (permissions, I/O) throws, so nothing overwrites it. A
+// file that no longer parses is copied aside first — otherwise the next save
+// would replace the whole library with a single entry.
+async function loadStore() {
+  const file = storeFile();
+  let text;
+  try { text = await readFile(file, 'utf8'); } catch (error) {
+    if (error.code === 'ENOENT') return emptyStore();
+    throw error;
+  }
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch { /* handled below */ }
+  if (!parsed || typeof parsed !== 'object') {
+    const aside = `${file}.corrupt-${Date.now()}`;
+    await copyFile(file, aside);
+    debug('unparseable library kept at', aside);
+    return emptyStore();
+  }
+  // Accept the older array-only shape as well.
+  const topics = Array.isArray(parsed) ? parsed : parsed.topics;
+  const attempts = Array.isArray(parsed.hotAttempts) ? parsed.hotAttempts : [];
+  return { topics: (Array.isArray(topics) ? topics : []).filter(isValid), hotAttempts: attempts.filter(t => typeof t === 'string') };
+}
+
+// For readers: an unreadable file shows as empty for now and is retried later.
 async function readStore() {
   if (cache) return cache;
-  const file = storeFile();
-  try {
-    const parsed = JSON.parse(await readFile(file, 'utf8'));
-    // Accept the older array-only shape as well.
-    const topics = Array.isArray(parsed) ? parsed : parsed?.topics;
-    const attempts = Array.isArray(parsed?.hotAttempts) ? parsed.hotAttempts : [];
-    cache = { topics: (Array.isArray(topics) ? topics : []).filter(isValid), hotAttempts: attempts.filter(t => typeof t === 'string') };
-  } catch (error) {
-    if (error.code !== 'ENOENT') debug('read failed', error.message);
-    cache = { topics: [], hotAttempts: [] };
+  try { cache = await loadStore(); } catch (error) {
+    debug('read failed', error.message);
+    return emptyStore();
   }
+  return cache;
+}
+
+// For writers: never start from a stand-in empty library. If the file cannot be
+// read, the throw skips the write and the file stays as it is.
+async function storeForWrite() {
+  if (!cache) cache = await loadStore();
   return cache;
 }
 
@@ -72,7 +100,7 @@ export function findAutoTopic(topics, id) {
 
 export async function saveAutoTopic(record) {
   queue = queue.then(async () => {
-    const store = await readStore();
+    const store = await storeForWrite();
     const topics = [record, ...store.topics.filter(topic => topic.id !== record.id)].slice(0, LIMIT);
     await writeStore({ ...store, topics });
   }).catch(error => { debug('save failed', error.message); });
@@ -91,8 +119,9 @@ export async function resetAutoTopics() {
 }
 
 /** Remembers which headlines were already tried, so a failure is not retried. */
-export async function rememberHotAttempts(labels) {  queue = queue.then(async () => {
-    const store = await readStore();
+export async function rememberHotAttempts(labels) {
+  queue = queue.then(async () => {
+    const store = await storeForWrite();
     const hotAttempts = [...new Set([...store.hotAttempts, ...labels])].slice(-200);
     await writeStore({ ...store, hotAttempts });
   }).catch(error => { debug('attempt log failed', error.message); });

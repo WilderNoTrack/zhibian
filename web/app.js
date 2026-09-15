@@ -391,17 +391,17 @@ async function runCritique(form) {
   if (!s || !question || !result || !button) return;
   const requestVersion = ++criticVersion;
   criticController?.abort(); criticController = new AbortController();
-  button.disabled = true; button.textContent = 'DeepSeek 思考中…'; result.className = 'critique-result pending'; result.textContent = '正在结合回答全文分析…';
+  button.disabled = true; button.textContent = '正在组织回应…'; result.className = 'critique-result pending'; result.textContent = '正在站在这条回答的立场上组织回应…';
   try {
     const data = await api('/api/critique', criticController.signal, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       sourceId: s.id, topic: current.title, side: Number(form.dataset.side) ? current.right : current.left, evidence: s.evidence, text: s.originalText || s.text, question
     }) });
     if (requestVersion !== criticVersion || !result.isConnected) return;
-    result.className = 'critique-result'; result.innerHTML = `<div class="analysis-label">${icon('spark')}DeepSeek 质询</div><p>${h(data.answer)}</p><small class="analysis-reference">基于 ${h(s.name)} 的知乎回答全文；AI 不替代原文核对。</small>`;
+    result.className = 'critique-result'; result.innerHTML = `<div class="analysis-label">${icon('spark')}AI 模拟回应${data.model ? ` · ${h(data.model)}` : ''}</div><p>${h(data.answer)}</p><small class="analysis-reference">AI 模拟，不是 ${h(s.name)} 本人说的话；论据取自这条回答的知乎原文，请以原文为准。</small>`;
   } catch (error) {
     if (requestVersion !== criticVersion || error.name === 'AbortError' || !result.isConnected) return;
     result.className = 'critique-result unavailable'; result.textContent = error.message || 'AI 质询暂时不可用，请稍后再试。';
-  } finally { if (requestVersion === criticVersion && button.isConnected) { button.disabled = false; button.innerHTML = `${icon('spark')}问 DeepSeek`; } }
+  } finally { if (requestVersion === criticVersion && button.isConnected) { button.disabled = false; button.innerHTML = `${icon('spark')}让它回应`; } }
 }
 
 // ---- Search ----

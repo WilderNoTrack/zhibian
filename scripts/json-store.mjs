@@ -7,7 +7,7 @@
 //     half-written store behind;
 //   - writes are serialised through one queue, so two concurrent saves cannot
 //     clobber each other.
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,14 +21,31 @@ export function createJsonStore({ name, limit = 200, label = name }) {
   let cache = null;
   let queue = Promise.resolve();
 
+  // A missing file is an empty store. An unreadable one (permissions, I/O)
+  // throws, so nothing overwrites it. One that no longer parses is copied aside
+  // before it can be replaced by the next write.
+  async function load() {
+    const file = dataFile(name);
+    let text;
+    try { text = await readFile(file, 'utf8'); } catch (error) {
+      if (error.code === 'ENOENT') return {};
+      throw error;
+    }
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch { /* handled below */ }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    const aside = `${file}.corrupt-${Date.now()}`;
+    await copyFile(file, aside);
+    debug('unparseable store kept at', aside);
+    return {};
+  }
+
+  // For readers: an unreadable file shows as empty for now and is retried later.
   async function read() {
     if (cache) return cache;
-    try {
-      const parsed = JSON.parse(await readFile(dataFile(name), 'utf8'));
-      cache = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch (error) {
-      if (error.code !== 'ENOENT') debug('read failed', error.message);
-      cache = {};
+    try { cache = await load(); } catch (error) {
+      debug('read failed', error.message);
+      return {};
     }
     return cache;
   }
@@ -45,7 +62,10 @@ export function createJsonStore({ name, limit = 200, label = name }) {
   /** Upserts one key; oldest entries (by `at`) fall off past the limit. */
   function put(key, value) {
     queue = queue.then(async () => {
-      const store = await read();
+      // Never write on top of a stand-in empty store: if the file cannot be
+      // read, the throw skips this write and leaves the file alone.
+      if (!cache) cache = await load();
+      const store = cache;
       const next = { ...store, [key]: value };
       const keys = Object.keys(next);
       if (keys.length > limit) {

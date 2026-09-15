@@ -116,7 +116,7 @@ export function arrangeDebate(config, items) {
   });
   const { selections, query, sharedQuestions: _shared, oppositions: _oppositions, ...meta } = config;
   return { ...meta, rounds, lenses, hosts, sharedQuestions, oppositions, roundIndexes, items, mode: rounds.length ? 'debate' : 'reading',
-    missingSeats: 6 - rounds.length * 2,
+    missingSeats: Math.max(0, 6 - rounds.length * 2),
     arrangement: config.autoArranged
       ? 'AI 自动编排：原句已与知乎返回的正文逐字校验，未通过校验的席位会被直接丢弃，不会用生成内容补位。这是观点对照，不是真人同场辩论。'
       : '人工核对的观点编排；非真人同场辩论；不同来源的语境可能不同。' };

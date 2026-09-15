@@ -5,7 +5,8 @@ import { topicIds } from './topic-ids.js';
 export const isFreeTopic = id => typeof id === 'string' && (id.startsWith('q:') || id.startsWith('auto-'));
 export const isKnownTopic = id => topicIds.includes(id) || isFreeTopic(id);
 export function createState(topicId = 'parenting', roundCount = 3) {
-  return { topicId, roundCount: Math.max(1, Math.min(3, roundCount)), round: 0, view: 'arena', seen: [0] };
+  // As many rounds as actually verified: an AI arrangement is not capped at three.
+  return { topicId, roundCount: Math.max(1, Math.floor(Number(roundCount)) || 1), round: 0, view: 'arena', seen: [0] };
 }
 export function transition(state, action) {
   if (action.type === 'topic') return isKnownTopic(action.id) ? createState(action.id, action.count ?? 3) : state;

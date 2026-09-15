@@ -97,6 +97,9 @@ test('source dialog and AI critique work from an answer card', async () => {
   doc.querySelector('#critic-question').value = '前提是什么？';
   submit('.critic-form');
   await until(() => doc.querySelector('[data-critique-result]')?.textContent.includes('前提是什么'), 'critique');
+  assert.match(doc.querySelector('[data-critique-result] .analysis-label').textContent, /AI 模拟回应/);
+  await until(() => !doc.querySelector('.critic-form button[type="submit"]').disabled, 'button re-enabled');
+  assert.match(doc.querySelector('.critic-form button[type="submit"]').textContent, /让它回应/, 'the button keeps its label after a reply');
   click('dialog [data-action="close"]');
 });
 

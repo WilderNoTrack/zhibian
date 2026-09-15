@@ -125,7 +125,7 @@ export function keepRounds(payload, rawVerdicts) {
     sharedQuestions: kept.map(index => payload.sharedQuestions[index]),
     oppositions: kept.map(index => ({ left: verdicts[index].leftPosition, right: verdicts[index].rightPosition })),
     mode: kept.length ? payload.mode : 'reading',
-    missingSeats: 6 - kept.length * 2,
+    missingSeats: Math.max(0, 6 - kept.length * 2),
     notice: kept.length ? payload.notice : '这组回答之间没有形成真正的两方对立，先按原观点阅读。',
     verification: { ...payload.verification, dropped: [...(payload.verification?.dropped || []), ...rejected] }
   };
@@ -161,7 +161,7 @@ export function autoDebate({ query, items = [], arrangement = null, model = null
       : items.length ? '这组回答之间没有形成稳定的两方对照，先按原观点阅读。'
         : '这次没有找到与这个问题直接相关的观点，换一个更具体的说法再试。',
     mode: rounds.length ? 'debate' : 'reading',
-    missingSeats: 6 - rounds.length * 2,
+    missingSeats: Math.max(0, 6 - rounds.length * 2),
     verification: { checked: Array.isArray(arrangement?.rounds) ? arrangement.rounds.length : 0, dropped },
     questions: questions.length ? questions : ['两边各自成立的前提是什么？', '这组回答遗漏了什么条件？'],
     arrangement: arrangementNote

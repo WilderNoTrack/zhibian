@@ -86,26 +86,63 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
     })();
     try {return await hotPending;} finally {hotPending = null;}
   }
-  async function cachedSearch(query) {
-    const now = Date.now(), existing = cache.get(query);
-    if (existing && now - existing.fetched < 15 * 60 * 1000) return { ...existing.data, cached: true };
-    if (inFlight.has(query)) return inFlight.get(query);
+  // At most two Zhihu CLI searches run at once. A search that finds both slots
+  // busy waits for its turn instead of failing, so carousel previews and the
+  // background hot-list collection cannot turn a reader's click into
+  // "查询暂时受限". Reader-initiated searches are served before background work.
+  const SEARCH_SLOTS = 2, SLOT_WAIT_MS = 30000, BACKGROUND_SLOT_WAIT_MS = 120000;
+  let activeSearches = 0;
+  const slotQueue = [];
+  function acquireSearchSlot(background) {
+    if (activeSearches < SEARCH_SLOTS && !slotQueue.length) { activeSearches++; return Promise.resolve(); }
+    return new Promise((resolve, reject) => {
+      const waiter = { background, resolve };
+      waiter.timer = setTimeout(() => {
+        const at = slotQueue.indexOf(waiter);
+        if (at !== -1) slotQueue.splice(at, 1);
+        reject({ status: 429, code: 'RATE_LIMIT', message: '知乎搜索排队太久，请稍后再试。不会自动重复请求。' });
+      }, background ? BACKGROUND_SLOT_WAIT_MS : SLOT_WAIT_MS);
+      slotQueue.push(waiter);
+    });
+  }
+  function releaseSearchSlot() {
+    const reader = slotQueue.findIndex(waiter => !waiter.background);
+    const next = slotQueue.splice(reader === -1 ? 0 : reader, 1)[0];
+    if (!next) { activeSearches--; return; }
+    // The slot passes straight to the next waiter; the active count is unchanged.
+    clearTimeout(next.timer);
+    next.resolve();
+  }
+  const searchLimited = () => {
+    const now = Date.now();
     if (now - windowStart > 3600000) { windowStart = now; calls = 0; }
-    if (now < cooldown || calls >= SEARCH_LIMIT || inFlight.size >= 2) throw { status: 429, code: 'RATE_LIMIT', message: '查询暂时受限，请稍后再试。不会自动重复请求。' };
-    calls++;
+    return now < cooldown || calls >= SEARCH_LIMIT;
+  };
+  const limitedError = () => ({ status: 429, code: 'RATE_LIMIT', message: '查询暂时受限，请稍后再试。不会自动重复请求。' });
+  async function cachedSearch(query, { background = false } = {}) {
+    const existing = cache.get(query);
+    if (existing && Date.now() - existing.fetched < 15 * 60 * 1000) return { ...existing.data, cached: true };
+    if (inFlight.has(query)) return inFlight.get(query);
+    if (searchLimited()) throw limitedError();
     const pending = (async () => {
-      const result = await search(query);
-      if (result.Code !== 0) {
-        if (result.Code === 30001) { cooldown = Date.now() + 60000; throw { status: 429, code: 'RATE_LIMIT', message: '知乎接口额度或频率受限，请稍后再试。' }; }
-        if (result.Code === 20001) throw { status: 503, code: 'AUTH_REQUIRED', message: '知乎凭据不可用。请在运行服务的当前用户下配置官方 CLI。' };
-        if (result.Code === 'CLI_MISSING') throw { status: 503, code: 'CLI_MISSING', message: '找不到知乎 CLI，请检查服务端配置。' };
-        throw new Error('UPSTREAM_ERROR');
-      }
-      if (!Array.isArray(result.Data?.Items)) throw new Error('MALFORMED_RESPONSE');
-      const data = { items: normalizeItems(result), fetchedAt: new Date().toISOString(), cached: false };
-      if (cache.size >= 60) cache.delete(cache.keys().next().value);
-      cache.set(query, { fetched: Date.now(), data });
-      return data;
+      await acquireSearchSlot(background);
+      try {
+        // The hourly budget or an upstream cooldown may have run out while waiting.
+        if (searchLimited()) throw limitedError();
+        calls++;
+        const result = await search(query);
+        if (result.Code !== 0) {
+          if (result.Code === 30001) { cooldown = Date.now() + 60000; throw { status: 429, code: 'RATE_LIMIT', message: '知乎接口额度或频率受限，请稍后再试。' }; }
+          if (result.Code === 20001) throw { status: 503, code: 'AUTH_REQUIRED', message: '知乎凭据不可用。请在运行服务的当前用户下配置官方 CLI。' };
+          if (result.Code === 'CLI_MISSING') throw { status: 503, code: 'CLI_MISSING', message: '找不到知乎 CLI，请检查服务端配置。' };
+          throw new Error('UPSTREAM_ERROR');
+        }
+        if (!Array.isArray(result.Data?.Items)) throw new Error('MALFORMED_RESPONSE');
+        const data = { items: normalizeItems(result), fetchedAt: new Date().toISOString(), cached: false };
+        if (cache.size >= 60) cache.delete(cache.keys().next().value);
+        cache.set(query, { fetched: Date.now(), data });
+        return data;
+      } finally { releaseSearchSlot(); }
     })();
     inFlight.set(query, pending);
     try { return await pending; } finally { inFlight.delete(query); }
@@ -167,14 +204,14 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
       return [topic];
     }
   }
-  async function cachedSearchPool(topic, { id = null, report = () => {} } = {}) {
+  async function cachedSearchPool(topic, { id = null, report = () => {}, background = false } = {}) {
     const queries = await cachedQueries(topic, id, report);
     const merged = [], seen = new Set();
     let fetchedAt = null, cached = true;
     for (const [index, query] of queries.entries()) {
       let result;
       report(`在知乎搜索（第 ${index + 1} / ${queries.length} 组）`, query);
-      try { result = await cachedSearch(query); } catch (error) {
+      try { result = await cachedSearch(query, { background }); } catch (error) {
         // Whatever was already gathered still beats failing the whole page.
         if (merged.length) { if (process.env.ZHIBIAN_DEBUG) console.error('[pool] partial:', query, error.code); break; }
         throw error;
@@ -294,8 +331,8 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
   }
   // Free question -> search -> AI relevance filter -> AI arrangement ->独立对立复核.
   // Every step is cached, so repeating a question costs no extra upstream calls.
-  async function autoPipeline(query, { featured = null, category = null, report = () => {} } = {}) {
-    const data = await cachedSearchPool(query, { id: freeTopicId(query), report });
+  async function autoPipeline(query, { featured = null, category = null, report = () => {}, background = false } = {}) {
+    const data = await cachedSearchPool(query, { id: freeTopicId(query), report, background });
     if (!data.items.length) return { payload: autoDebate({ query }), fetchedAt: data.fetchedAt, cached: data.cached };
     report('判断哪些回答能站到这一题的一边');
     const filtered = await cachedFilter({ topic: query, items: data.items.map(item => ({ id: item.id, sourceTitle: item.sourceTitle, text: item.text })) });
@@ -369,8 +406,8 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
       }
     } catch (error) {
       blockedHot = error.code || 'HOT_UNAVAILABLE';
+      // Seed topics below still go through the pipeline; only the headlines are skipped.
       if (process.env.ZHIBIAN_DEBUG) console.error('[featured] hot skipped', blockedHot);
-      blocked = blockedHot;
     }
     for (const seed of debateSeeds) {
       if (!known.has(seed.topic) && !tried.has(seed.topic)) {
@@ -391,7 +428,7 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
         const candidates = (await featuredCandidates(known, tried)).slice(0, FEATURED_PER_ROUND);
         for (const candidate of candidates) {
           try {
-            await autoPipeline(candidate.topic, { featured: { source: candidate.source, rank: candidate.rank, label: candidate.title }, category: candidate.category });
+            await autoPipeline(candidate.topic, { featured: { source: candidate.source, rank: candidate.rank, label: candidate.title }, category: candidate.category, background: true });
             // Reaching here means the headline was really evaluated, even if it
             // turned out to have no usable opposition. Only then is it spent.
             evaluated.push(candidate.title);
@@ -429,7 +466,8 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
   async function topicPreview(topic) {
     const cached = previewCache.get(topic.id);
     if (cached) return cached;
-    const data = await cachedSearchPool(topic.query, { id: topic.id });
+    // Carousel previews are background work: a reader's click goes ahead of them.
+    const data = await cachedSearchPool(topic.query, { id: topic.id, background: true });
     const debate = arrangeDebate(topic, data.items);
     const round = debate.rounds[0];
     const preview = round ? {
