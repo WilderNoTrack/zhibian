@@ -14,7 +14,7 @@
 | 服务 | `zhibian.service`，以 `zhibian` 系统用户运行，监听 `127.0.0.1:3104` |
 | 反向代理 | `/etc/caddy/conf.d/zhibian.wildernotrack.me.caddy`，Caddy 自动签发 HTTPS 证书 |
 
-`zhibian.env` 里的变量：`ZHIHU_ACCESS_SECRET`、`DEEPSEEK_API_KEY`、`PORT=3104`、`ZHIBIAN_DATA_DIR=/var/lib/zhibian`、`ZHIBIAN_PUBLIC_HOSTS=zhibian.wildernotrack.me`、`ZHIHU_CLI_PATH=/srv/apps/zhibian/bin/zhihu-cli`。服务器上没有系统密钥链，知乎 CLI 从环境变量读取 Access Secret。写这个文件时不能带 UTF-8 BOM，否则 systemd 认不出第一行。
+`zhibian.env` 里的变量：`ZHIHU_ACCESS_SECRET`、`ZHIHU_ACCESS_SECRET_2`（补充凭据，主凭据额度用完或无效时自动接替）、`DEEPSEEK_API_KEY`、`PORT=3104`、`ZHIBIAN_DATA_DIR=/var/lib/zhibian`、`ZHIBIAN_PUBLIC_HOSTS=zhibian.wildernotrack.me`、`ZHIHU_CLI_PATH=/srv/apps/zhibian/bin/zhihu-cli`。服务器上没有系统密钥链，知乎 CLI 从环境变量读取 Access Secret。写这个文件时不能带 UTF-8 BOM，否则 systemd 认不出第一行。
 
 ## 为部署做的代码改动
 

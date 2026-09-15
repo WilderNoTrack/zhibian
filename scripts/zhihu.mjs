@@ -5,16 +5,66 @@ const execute = promisify(execFile);
 const cli = process.env.ZHIHU_CLI_PATH || 'C:\\Users\\32390\\AppData\\Local\\ZhihuCLI\\current\\zhihu-cli.exe';
 
 export async function searchZhihu(query) {
-  return callCli(['search', 'zhihu', '--query', query, '--count', '10']);
+  return callCli(['search', 'zhihu', '--query', query, '--count', '10'], 'search');
 }
 export async function hotZhihu() {
-  return callCli(['hot', '--limit', '20']);
+  return callCli(['hot', '--limit', '20'], 'hot');
 }
-async function callCli(args) {
+
+// More than one open-platform credential can back the site: the primary one
+// (ZHIHU_ACCESS_SECRET, or the CLI's own keychain when that is unset) and a
+// supplementary ZHIHU_ACCESS_SECRET_2. Every API has its own daily quota per
+// credential, so when one answers "quota or rate limited" (30001) or "not
+// authorised" (20001), the same call is retried with the next credential. One
+// that just failed is tried last for the next ten minutes, per API, so it does
+// not cost a failed call every time. Other failures (timeouts, a missing CLI)
+// have nothing to do with the credential and are not retried.
+const SET_ASIDE_MS = 10 * 60 * 1000;
+const setAside = new Map();
+const defaultRunner = (args, env) => execute(cli, args, {
+  windowsHide: true, timeout: 45000, maxBuffer: 3 * 1024 * 1024, encoding: 'utf8', env
+});
+let runner = defaultRunner;
+let now = () => Date.now();
+
+/** Test hook: swap the CLI process and the clock; pass nothing to restore. */
+export function useCliRunner(fn, { clock } = {}) {
+  runner = fn || defaultRunner;
+  now = clock || (() => Date.now());
+  setAside.clear();
+}
+
+function credentials() {
+  const primary = process.env.ZHIHU_ACCESS_SECRET || null;
+  const list = [{ label: 'primary', secret: primary }];
+  const extra = String(process.env.ZHIHU_ACCESS_SECRET_2 || '').trim();
+  if (extra && extra !== primary) list.push({ label: 'secondary', secret: extra });
+  return list;
+}
+
+async function callCli(args, kind = 'other') {
+  const all = credentials();
+  const slot = entry => kind + ':' + entry.label;
+  const resting = entry => (setAside.get(slot(entry)) || 0) > now();
+  const ordered = [...all.filter(entry => !resting(entry)), ...all.filter(resting)];
+  let result;
+  for (const entry of ordered) {
+    // The secret travels in the child's environment, never on its command line.
+    const env = entry.secret ? { ...process.env, ZHIHU_ACCESS_SECRET: entry.secret } : process.env;
+    result = await runOnce(args, env);
+    if (result.Code !== 30001 && result.Code !== 20001) {
+      if (result.Code === 0) setAside.delete(slot(entry));
+      return result;
+    }
+    setAside.set(slot(entry), now() + SET_ASIDE_MS);
+    if (process.env.ZHIBIAN_DEBUG) console.error('[zhihu-cli]', kind, entry.label, 'answered', result.Code, all.length > 1 ? '- trying the next credential' : '');
+  }
+  return result;
+}
+
+async function runOnce(args, env) {
   try {
-    const { stdout } = await execute(cli, args, {
-      windowsHide: true, timeout: 45000, maxBuffer: 3 * 1024 * 1024, encoding: 'utf8'
-    });
+    const { stdout } = await runner(args, env);
     return JSON.parse(stdout.replace(/^\uFEFF/, ''));
   } catch (error) {
     // CLI may exit nonzero with a structured error. Never expose raw stdout/stderr.
