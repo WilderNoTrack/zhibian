@@ -29,7 +29,7 @@ test('Beijing day helpers', () => {
   assert.equal(new Date(nextBeijingMidnight(start)).toISOString(), '2026-09-15T16:00:00.000Z');
 });
 
-test('a whole day of requests every five minutes fetches the hot list at most ten times', async () => {
+test('requests every five minutes for a whole day fetch the hot list once an hour', async () => {
   let calls = 0, now = start;
   await withServer({ hot: async () => { calls++; return list; }, clock: () => now }, async base => {
     for (let minute = 0; minute < 24 * 60; minute += 5) {
@@ -37,8 +37,15 @@ test('a whole day of requests every five minutes fetches the hot list at most te
       assert.equal((await fetch(base + '/api/hot')).status, 200);
     }
   });
-  assert.ok(calls <= 10, `${calls} calls in 24 hours`);
-  assert.ok(calls >= 9, 'the list is still refreshed through the day');
+  assert.equal(calls, 24, `${calls} calls in 24 hours`);
+});
+
+test('a burst of requests within the same hour makes a single call', async () => {
+  let calls = 0, now = start;
+  await withServer({ hot: async () => { calls++; return list; }, clock: () => now }, async base => {
+    for (let minute = 0; minute < 60; minute += 1) { now = start + minute * 60 * 1000; await fetch(base + '/api/hot'); }
+  });
+  assert.equal(calls, 1);
 });
 
 test('once Zhihu reports the quota used up, nothing is called until Beijing midnight', async () => {
@@ -59,12 +66,23 @@ test('a restarted server reuses the saved list instead of calling again', async 
   await withServer({ hot, clock: () => start, hotState: fileHotState() }, async base => {
     assert.equal((await fetch(base + '/api/hot')).status, 200);
   });
-  await withServer({ hot, clock: () => start + HOUR, hotState: fileHotState() }, async base => {
+  await withServer({ hot, clock: () => start + 30 * 60 * 1000, hotState: fileHotState() }, async base => {
     const data = await (await fetch(base + '/api/hot')).json();
     assert.equal(data.items[0].title, '要不要换工作');
     assert.equal(data.cached, true);
   });
   assert.equal(calls, 1);
+});
+
+test('Zhihu search has no local hourly cap', async () => {
+  let searches = 0;
+  await withServer({ search: async () => { searches++; return { Code: 0, Data: { Items: [] } }; } }, async base => {
+    for (let i = 0; i < 120; i++) {
+      const response = await fetch(`${base}/api/search?q=${encodeURIComponent('不同的问题' + i)}`);
+      assert.equal(response.status, 200, `search ${i + 1}`);
+    }
+  });
+  assert.equal(searches, 120, 'well past the old 60-an-hour ceiling');
 });
 
 test('twenty lobby loads spend at most one hot-list call', async () => {

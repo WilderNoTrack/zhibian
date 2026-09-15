@@ -38,7 +38,7 @@ async function serveStatic(req, res) {
     res.end('Not found');
   }
 }
-export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, summarize = summarizeWithDeepSeek, critique = critiqueWithDeepSeek, filter = filterWithDeepSeek, arrange = arrangeWithDeepSeek, verifyOpposition = verifyOppositionWithDeepSeek, expandQueries = expandQueriesWithDeepSeek, hotState = memoryHotState(), hotDailyLimit = Number(process.env.ZHIBIAN_HOT_DAILY_LIMIT) || 10, clock = () => Date.now() } = {}) {
+export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, summarize = summarizeWithDeepSeek, critique = critiqueWithDeepSeek, filter = filterWithDeepSeek, arrange = arrangeWithDeepSeek, verifyOpposition = verifyOppositionWithDeepSeek, expandQueries = expandQueriesWithDeepSeek, hotState = memoryHotState(), hotIntervalMinutes = Number(process.env.ZHIBIAN_HOT_INTERVAL_MINUTES) || 60, clock = () => Date.now() } = {}) {
   // The eight hand-built categories; AI topics may only be filed into one of
   // these, never into a category of their own. The hints tell the model what
   // each one actually covers, so a headline like "餐馆利润靠酒水" lands in
@@ -57,22 +57,18 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
   const categoryHintText = allowedCategories.map(name => `${name}（${CATEGORY_HINTS[name] || ''}）`).join('；');
   const cache = new Map(), inFlight = new Map(), summaryCache = new Map(), summaryInFlight = new Map(), critiqueCache = new Map(), critiqueInFlight = new Map(), filterCache = new Map(), filterInFlight = new Map(), arrangeCache = new Map(), arrangeInFlight = new Map(), oppositionCache = new Map(), oppositionInFlight = new Map(), queryCache = new Map();
   let hotPending = null;
-  let windowStart = Date.now(), calls = 0, cooldown = 0;
-  // Each topic now costs one search per query variant, so this ceiling is shared
-  // across more work than before; it stays tunable for demos and for tests.
-  const SEARCH_LIMIT = Math.max(1, Number(process.env.ZHIBIAN_SEARCH_LIMIT ?? 60));
+  let cooldown = 0;
   const send = (res, status, data) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.end(JSON.stringify(data));
   };
   // The hot list has its own small daily quota, and every lobby load used to be
-  // able to spend a call. Now it is fetched at most `hotDailyLimit` times per
-  // Beijing calendar day, never twice within 24h / limit, and not at all after
-  // Zhihu reports the quota used up until the next Beijing midnight. Between
-  // fetches the last list is reused, however old. A call is counted before it is
-  // made, so a crash or timeout mid-call still counts.
-  const HOT_LIMIT = Math.max(1, Math.floor(hotDailyLimit));
-  const HOT_MIN_INTERVAL = 24 * 60 * 60 * 1000 / HOT_LIMIT;
+  // able to spend a call. Now it is fetched at most once per `hotIntervalMinutes`
+  // (an hour by default), and not at all after Zhihu reports the quota used up
+  // until the next Beijing midnight. Between fetches the last list is reused,
+  // however old. A call is counted before it is made, so a crash or timeout
+  // mid-call still counts toward the interval.
+  const HOT_MIN_INTERVAL = Math.max(1, hotIntervalMinutes) * 60 * 1000;
   async function cachedHot() {
     if (hotPending) return hotPending;
     const state = await hotState.load();
@@ -82,10 +78,10 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
     if (state.day !== beijingDay(at)) { state.day = beijingDay(at); state.calls = 0; }
     const last = Array.isArray(state.last?.data?.items) ? state.last : null;
     if (last && at - last.fetched < HOT_MIN_INTERVAL) return { ...last.data, cached: true };
-    const holding = at < (state.blockedUntil || 0) || at - (state.lastCallAt || 0) < HOT_MIN_INTERVAL || (state.calls || 0) >= HOT_LIMIT;
+    const holding = at < (state.blockedUntil || 0) || at - (state.lastCallAt || 0) < HOT_MIN_INTERVAL;
     if (holding) {
       if (last) return { ...last.data, cached: true };
-      throw { status: 429, code: 'RATE_LIMIT', message: '热榜今天的刷新次数已用完或未到下次刷新时间；分类仍可浏览。' };
+      throw { status: 429, code: 'RATE_LIMIT', message: '热榜还没到下次刷新时间，或今日额度已用完；分类仍可浏览。' };
     }
     state.calls = (state.calls || 0) + 1;
     state.lastCallAt = at;
@@ -136,12 +132,11 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
     clearTimeout(next.timer);
     next.resolve();
   }
-  const searchLimited = () => {
-    const now = Date.now();
-    if (now - windowStart > 3600000) { windowStart = now; calls = 0; }
-    return now < cooldown || calls >= SEARCH_LIMIT;
-  };
-  const limitedError = () => ({ status: 429, code: 'RATE_LIMIT', message: '查询暂时受限，请稍后再试。不会自动重复请求。' });
+  // No local cap on how many searches run: the account's daily search quota is
+  // far larger than this site uses. Only Zhihu's own rate-limit answer pauses
+  // searching, for a minute.
+  const searchLimited = () => Date.now() < cooldown;
+  const limitedError = () => ({ status: 429, code: 'RATE_LIMIT', message: '知乎接口额度或频率受限，请稍后再试。不会自动重复请求。' });
   async function cachedSearch(query, { background = false } = {}) {
     const existing = cache.get(query);
     if (existing && Date.now() - existing.fetched < 15 * 60 * 1000) return { ...existing.data, cached: true };
@@ -150,9 +145,8 @@ export function createRequestHandler({ search = searchZhihu, hot = hotZhihu, sum
     const pending = (async () => {
       await acquireSearchSlot(background);
       try {
-        // The hourly budget or an upstream cooldown may have run out while waiting.
+        // Zhihu may have rate-limited another search while this one was waiting.
         if (searchLimited()) throw limitedError();
-        calls++;
         const result = await search(query);
         if (result.Code !== 0) {
           if (result.Code === 30001) { cooldown = Date.now() + 60000; throw { status: 429, code: 'RATE_LIMIT', message: '知乎接口额度或频率受限，请稍后再试。' }; }
